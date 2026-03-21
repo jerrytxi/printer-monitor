@@ -31,6 +31,9 @@ Modified to use NTP with POSIX timezone for automatic DST handling
 
 TimeClient::TimeClient(String timeZone) {
   myTimeZone = timeZone;
+  // Apply POSIX timezone immediately in constructor
+  setenv("TZ", myTimeZone.c_str(), 1);
+  tzset();
 }
 
 void TimeClient::updateTime() {
@@ -66,6 +69,7 @@ void TimeClient::setTimezone(String timeZone) {
   myTimeZone = timeZone;
   setenv("TZ", myTimeZone.c_str(), 1);
   tzset();
+  timeSynced = false;  // Force re-sync on next updateTime() call
 }
 
 String TimeClient::getHours() {

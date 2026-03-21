@@ -574,6 +574,8 @@ void handleUpdateConfig() {
   temp = server.arg("stationpassword");
   temp.toCharArray(www_password, sizeof(temp));
   writeSettings();
+  timeClient.setTimezone(TimeZone);
+  timeClient.updateTime();
   findMDNS();
   printerClient.getPrinterJobResults();
   printerClient.getPrinterPsuState();
