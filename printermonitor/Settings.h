@@ -46,7 +46,7 @@ SOFTWARE.
 #include <ESP8266HTTPUpdateServer.h>
 #include "TimeClient.h"
 #include "RepetierClient.h"
-#include "OctoPrintClient.h"
+#include "MoonrakerClient.h"
 #include "OpenMeteoAPI.h"
 #include "WeatherStationFonts.h"
 #include "FS.h"
@@ -58,12 +58,12 @@ SOFTWARE.
 // Start Settings
 //******************************
 
-// OctoPrint / Repetier Monitoring -- Monitor your 3D OctoPrint or Repetier Server
-//#define USE_REPETIER_CLIENT       // Uncomment this line to use the Repetier Printer Server -- OctoPrint is used by default and is most common
-String PrinterApiKey = "";   // ApiKey from your User Account on OctoPrint / Repetier
-String PrinterHostName = "octopi";// Default 'octopi' -- or hostname if different (optional if your IP changes)
-String PrinterServer = "";   // IP or Address of your OctoPrint / Repetier Server (DO NOT include http://)
-int PrinterPort = 80;        // the port you are running your OctoPrint / Repetier server on (usually 80);
+// Moonraker / Repetier Monitoring -- Monitor your 3D Klipper(Moonraker) or Repetier Server
+//#define USE_REPETIER_CLIENT       // Uncomment this line to use the Repetier Printer Server -- Moonraker is used by default
+String PrinterApiKey = "";   // Optional Moonraker API key (required only if your Moonraker instance enforces it)
+String PrinterHostName = "mainsail";// Optional mDNS hostname for discovery
+String PrinterServer = "";   // IP or Address of your Moonraker / Repetier Server (DO NOT include http://)
+int PrinterPort = 7125;        // Moonraker default port is 7125
 String PrinterAuthUser = "";      // only used if you have haproxy or basic athentintication turned on (not default)
 String PrinterAuthPass = "";      // only used with haproxy or basic auth (only needed if you must authenticate)
 
@@ -101,7 +101,7 @@ const int externalLight = LED_BUILTIN; // LED will always flash on bootup or Wif
 boolean USE_FLASH = true; // true = System LED will Flash on Service Calls; false = disabled LED flashing
 
 // PSU Control
-boolean HAS_PSU = false; // Set to true if https://github.com/kantlivelong/OctoPrint-PSUControl/ in use
+boolean HAS_PSU = false; // OctoPrint PSUControl only; Moonraker does not use this switch
 
 // OTA Updates
 boolean ENABLE_OTA = true;     // this will allow you to load firmware to the device over WiFi (see OTA for ESP8266)

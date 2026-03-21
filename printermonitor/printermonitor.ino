@@ -88,7 +88,7 @@ boolean displayOn = true;
 #if defined(USE_REPETIER_CLIENT)
   RepetierClient printerClient(PrinterApiKey, PrinterServer, PrinterPort, PrinterAuthUser, PrinterAuthPass, HAS_PSU);
 #else
-  OctoPrintClient printerClient(PrinterApiKey, PrinterServer, PrinterPort, PrinterAuthUser, PrinterAuthPass, HAS_PSU);
+  MoonrakerClient printerClient(PrinterApiKey, PrinterServer, PrinterPort, PrinterAuthUser, PrinterAuthPass, HAS_PSU);
 #endif
 int printerCount = 0;
 
@@ -116,7 +116,7 @@ static const char CLOCK_FORM[] PROGMEM = "<hr><p><input name='isClockEnabled' cl
                       "<p><input name='is24hour' class='w3-check w3-margin-top' type='checkbox' %IS_24HOUR_CHECKED%> Use 24 Hour Clock (military time)</p>"
                       "<p><input name='invDisp' class='w3-check w3-margin-top' type='checkbox' %IS_INVDISP_CHECKED%> Flip display orientation</p>"
                       "<p><input name='useFlash' class='w3-check w3-margin-top' type='checkbox' %USEFLASH%> Flash System LED on Service Calls</p>"
-                      "<p><input name='hasPSU' class='w3-check w3-margin-top' type='checkbox' %HAS_PSU_CHECKED%> Use OctoPrint PSU control plugin for clock/blank</p>"
+                      "<p><input name='hasPSU' class='w3-check w3-margin-top' type='checkbox' %HAS_PSU_CHECKED%> Use OctoPrint PSU control plugin for clock/blank (not for Moonraker)</p>"
                       "<p>Clock Sync / Weather Refresh (minutes) <select class='w3-option w3-padding' name='refresh'>%OPTIONS%</select></p>";
                             
 static const char THEME_FORM[] PROGMEM =   "<p>Theme Color <select class='w3-option w3-padding' name='theme'>%THEME_OPTIONS%</select></p>"
@@ -663,7 +663,7 @@ void handleConfigure() {
   CHANGE_FORM =       "<form class='w3-container' action='/updateconfig' method='get'><h2>Station Config:</h2>"
                       "<p><label>" + printerClient.getPrinterType() + " API Key (get from your server)</label>"
                       "<input class='w3-input w3-border w3-margin-bottom' type='text' name='PrinterApiKey' id='PrinterApiKey' value='%OCTOKEY%' maxlength='60'></p>";
-  if (printerClient.getPrinterType() == "OctoPrint") {
+  if (printerClient.getPrinterType() == "OctoPrint" || printerClient.getPrinterType() == "Moonraker") {
     CHANGE_FORM +=      "<p><label>" + printerClient.getPrinterType() + " Host Name (usually octopi)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='PrinterHostName' value='%OCTOHOST%' maxlength='60'></p>";                        
   }
   CHANGE_FORM +=      "<p><label>" + printerClient.getPrinterType() + " Address (do not include http://)</label>"
@@ -675,7 +675,7 @@ void handleConfigure() {
                       "<input type='hidden' id='selectedPrinter' value='" + printerClient.getPrinterName() + "'><p id='RepetierTest'></p>"
                       "<script>testRepetier();</script>";                        
   } else {
-    CHANGE_FORM +=    "<input type='button' value='Test Connection and API JSON Response' onclick='testOctoPrint()'><p id='OctoPrintTest'></p>";
+    CHANGE_FORM +=    "<input type='button' value='Test Connection and API JSON Response' onclick='testMoonraker()'><p id='MoonrakerTest'></p>";
   }
   CHANGE_FORM +=      "<p><label>" + printerClient.getPrinterType() + " User (only needed if you have haproxy or basic auth turned on)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='octoUser' value='%OCTOUSER%' maxlength='30'></p>"
                       "<p><label>" + printerClient.getPrinterType() + " Password </label><input class='w3-input w3-border w3-margin-bottom' type='password' name='octoPass' value='%OCTOPASS%'></p>";
@@ -696,9 +696,9 @@ void handleConfigure() {
 
     server.sendContent(html);
   } else {
-    html = "<script>function testOctoPrint(){var e=document.getElementById(\"OctoPrintTest\"),t=document.getElementById(\"PrinterAddress\").value,"
+      html = "<script>function testMoonraker(){var e=document.getElementById(\"MoonrakerTest\"),t=document.getElementById(\"PrinterAddress\").value,"
            "n=document.getElementById(\"PrinterPort\").value;if(e.innerHTML=\"\",\"\"==t||\"\"==n)return e.innerHTML=\"* Address and Port are required\","
-           "void(e.style.background=\"\");var r=\"http://\"+t+\":\"+n;r+=\"/api/job?apikey=\"+document.getElementById(\"PrinterApiKey\").value,window.open(r,\"_blank\").focus()}</script>";
+        "void(e.style.background=\"\");var r=\"http://\"+t+\":\"+n;r+=\"/printer/info\";window.open(r,\"_blank\").focus()}</script>";
     server.sendContent(html);
   }
   
