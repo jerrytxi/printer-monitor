@@ -49,7 +49,7 @@ SOFTWARE.
 #include "MoonrakerClient.h"
 #include "OpenMeteoAPI.h"
 #include "WeatherStationFonts.h"
-#include "FS.h"
+#include <LittleFS.h>
 #include "SH1106Wire.h"
 #include "SSD1306Wire.h"
 #include "OLEDDisplayUi.h"
