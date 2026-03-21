@@ -93,7 +93,7 @@ boolean displayOn = true;
 int printerCount = 0;
 
 // Weather Client
-OpenWeatherMapClient weatherClient(WeatherCity, WeatherLat, WeatherLon, IS_METRIC);
+OpenMeteoAPI weatherClient(WeatherCity, WeatherLat, WeatherLon, IS_METRIC);
 
 //declairing prototypes
 void configModeCallback (WiFiManager *myWiFiManager);

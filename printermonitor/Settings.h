@@ -47,7 +47,7 @@ SOFTWARE.
 #include "TimeClient.h"
 #include "RepetierClient.h"
 #include "OctoPrintClient.h"
-#include "OpenWeatherMapClient.h"
+#include "OpenMeteoAPI.h"
 #include "WeatherStationFonts.h"
 #include "FS.h"
 #include "SH1106Wire.h"

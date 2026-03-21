@@ -21,24 +21,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// Modified to use Open-Meteo API (free, no API key required)
-// https://open-meteo.com/
-
 #pragma once
 #include <ESP8266WiFi.h>
-#include <ESP8266HTTPClient.h>
 #include "libs/ArduinoJson/ArduinoJson.h"
 
 class OpenWeatherMapClient {
 
 private:
-  String myCity = "";
-  String myLat = "";
-  String myLon = "";
+  String myCityIDs = "";
+  String myApiKey = "";
   String units = "";
-  String myLang = "en";
-
-  const char* servername = "api.open-meteo.com";
+  String lang = "";
+  
+  const char* servername = "api.openweathermap.org";  // remote server we will connect to
   String result;
 
   typedef struct {
@@ -61,16 +56,14 @@ private:
   weather weathers[5];
 
   String roundValue(String value);
-  int getLangIndex();
-  String wmoToCondition(int code);
-  String wmoToDescription(int code);
-
+  
 public:
-  OpenWeatherMapClient(String city, String lat, String lon, boolean isMetric);
+  OpenWeatherMapClient(String ApiKey, int CityIDs[], int cityCount, boolean isMetric, String language);
   void updateWeather();
-  void updateLocation(String city, String lat, String lon);
+  void updateWeatherApiKey(String ApiKey);
+  void updateCityIdList(int CityIDs[], int cityCount);
+  void updateLanguage(String language);
   void setMetric(boolean isMetric);
-  void setLanguage(String lang);
 
   String getWeatherResults();
 
@@ -90,6 +83,7 @@ public:
   String getDescription(int index);
   String getIcon(int index);
   boolean getCached();
-  String getError();
+  String getMyCityIDs();
   String getWeatherIcon(int index);
+  String getError();
 };
