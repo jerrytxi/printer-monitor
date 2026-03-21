@@ -83,8 +83,8 @@ char www_username[32] = "admin";  // User account for the Web Interface
 char www_password[32] = "password";  // Password for the Web Interface
 
 // Date and Time
-String TimeZone = "UTC0";      // POSIX timezone string (default: UTC, change via web interface)
-String TimeZoneName = "UTC";   // Display name for the timezone dropdown
+String TimeZone = "MYT-8";      // POSIX timezone string (default: Kuala Lumpur UTC+8, change via web interface)
+String TimeZoneName = "Kuala Lumpur";   // Display name for the timezone dropdown
 boolean IS_24HOUR = false;     // 23:00 millitary 24 hour clock
 int minutesBetweenDataRefresh = 15;
 boolean DISPLAYCLOCK = true;   // true = Show Clock when not printing / false = turn off display when not printing
