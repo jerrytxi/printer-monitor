@@ -29,6 +29,23 @@ Modified to use NTP with POSIX timezone for automatic DST handling
 #include "TimeClient.h"
 #include <coredecls.h>
 
+static void logTimezoneAndLocalTime(const String& tz) {
+  time_t now = time(nullptr);
+  struct tm* localInfo = localtime(&now);
+  char timeBuffer[32] = {0};
+
+  if (localInfo != nullptr) {
+    strftime(timeBuffer, sizeof(timeBuffer), "%Y-%m-%d %H:%M:%S", localInfo);
+  } else {
+    strncpy(timeBuffer, "localtime unavailable", sizeof(timeBuffer) - 1);
+  }
+
+  Serial.print("TZ applied: ");
+  Serial.println(tz);
+  Serial.print("Local time now: ");
+  Serial.println(timeBuffer);
+}
+
 TimeClient::TimeClient(String timeZone) {
   myTimeZone = timeZone;
   // Apply POSIX timezone immediately in constructor
@@ -41,8 +58,8 @@ void TimeClient::updateTime() {
   setenv("TZ", myTimeZone.c_str(), 1);
   tzset();
 
-  // Start NTP sync (offset=0, dst=0 because POSIX TZ handles everything)
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  // Start NTP sync with POSIX TZ so localtime() uses the selected timezone.
+  configTime(myTimeZone.c_str(), "pool.ntp.org", "time.nist.gov");
 
   if (!timeSynced) {
     Serial.print("Waiting for NTP sync");
@@ -59,6 +76,7 @@ void TimeClient::updateTime() {
     if (now > 100000) {
       timeSynced = true;
       Serial.println("NTP time synced successfully");
+      logTimezoneAndLocalTime(myTimeZone);
     } else {
       Serial.println("NTP sync timeout - will retry later");
     }
@@ -69,6 +87,7 @@ void TimeClient::setTimezone(String timeZone) {
   myTimeZone = timeZone;
   setenv("TZ", myTimeZone.c_str(), 1);
   tzset();
+  logTimezoneAndLocalTime(myTimeZone);
   timeSynced = false;  // Force re-sync on next updateTime() call
 }
 
