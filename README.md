@@ -1,117 +1,97 @@
-# Printer Monitor (OctoPrint / Repetier 3D Printer Monitor)
+# Printer Monitor (Moonraker / Klipper 3D Printer Monitor)
 
-This project is based on [Qrome/printer-monitor](https://github.com/Qrome/printer-monitor) by David Payne. As the original repository has not seen updates for some time, this fork aims to continue the work by adding new features and improvements while building on the solid foundation of the original project.
+基于 [Qrome/printer-monitor](https://github.com/Qrome/printer-monitor)(David Payne)的 fork。使用 Wemos D1 Mini(ESP8266)和 0.96" SSD1306 OLED,在小屏幕上显示 3D 打印机的打印状态。**默认对接 Klipper 的 Moonraker**,也可通过编译选项切换为 Repetier Server。
 
-## What's New in This Fork
+## 与原项目的主要区别
 
-### Open-Meteo Weather API (replaces OpenWeatherMap)
-The original project required an OpenWeatherMap API key for weather display. This fork replaces it with [Open-Meteo](https://open-meteo.com/) -- a free, open-source weather API that requires **no API key**. Just enter your city name and GPS coordinates in the web interface.
+- **默认使用 Moonraker**(`/printer/objects/query`,端口 7125)。`USE_REPETIER_CLIENT` 可切换到 Repetier;`OctoPrintClient.cpp` 仍在仓库中,但主程序不再引用。
+- **支持两台打印机**:第二台留空即禁用;两台同时打印时按 `secondsBetweenPrinterSwitch`(默认 30 秒)轮流显示。
+- **天气改用 [Open-Meteo](https://open-meteo.com/)**:免费,无需 API Key,在网页中填城市名和经纬度即可。天气文字支持英语、匈牙利语、德语、法语、西班牙语。
+- **时区使用 POSIX 规则 + NTP**:网页下拉框提供 30 个地区,夏令时自动处理。默认 `UTC+8`(Kuala Lumpur)。
+- **PlatformIO 构建**,配置存储使用 **LittleFS**(原项目为 Arduino IDE + SPIFFS)。
+- 显示改进:网络请求推迟到帧切换动画结束后执行,避免动画卡顿;每屏显示时间 15 秒。
 
-### Automatic Timezone with DST Support
-The manual UTC offset input has been replaced with a **timezone region dropdown** (30+ regions). The ESP8266 uses NTP time synchronization with POSIX timezone rules, so **daylight saving time is handled automatically** -- no more manual clock adjustments twice a year.
+## 功能
 
-### Multi-Language Weather Display
-Weather conditions on the OLED display and web interface are now available in **5 languages**:
-- English, Hungarian, German, French, Spanish
-- Selectable from the web interface weather settings
+- 显示打印进度:百分比、进度条、已打印时间、预计剩余时间、热端/热床温度
+- 打印机空闲时可显示时钟和天气(可选);也可选择直接关闭屏幕
+- 12 / 24 小时制时钟
+- 打印时每 10 秒查询一次,空闲时每 60 秒查询一次
+- 通过 mDNS 主机名(默认 `mainsail`)自动查找打印机地址
+- 全部设置可在网页中修改,无需改 `Settings.h`
+- ArduinoOTA 无线烧录,可设置 OTA 密码
+- 网页基本认证(默认 `admin` / `password`,**请修改**)
+- 网页上传编译好的固件(`/update`)
+- D3 按钮:短按切换到下一屏
+- 支持旋转显示(`INVERT_DISPLAY`)
+- OctoPrint PSU Control 插件检测(仅 OctoPrint 客户端有效,Moonraker 不使用)
 
-### Display Improvements
-- Fixed frame transition stuttering caused by blocking network calls during OLED animations
-- Network operations are now deferred until frame transitions complete
-- Configurable frame display time (default: 15 seconds per screen)
+## 硬件
 
-### Technical Improvements
-- Uses `ESP8266HTTPClient` for reliable HTTP communication (handles chunked transfer encoding)
-- NTP-based time synchronization instead of HTTP header parsing
-- Increased JSON parse buffer for reliable weather data handling
+- Wemos D1 Mini
+- 0.96" I2C OLED 128x64(SSD1306)
+- (可选)1.3" I2C OLED(SH1106):在 `Settings.h` 中取消注释 `#define DISPLAY_SH1106`
 
-## Features
-* Displays the print status from OctoPrint or Repetier Server
-* Option to display time and weather when printer is idle
-* Estimated time remaining
-* Time Printing
-* Percentage complete
-* Progress bar
-* Bed and Tool Temperature
-* Screen turns off when printer is turned off or disconnected
-* Screen turns on when printer is Operational or connected
-* Option to display a clock screen instead of sleep mode
-* Option to display 24 hour clock or AM/PM style
-* Option to display Current Weather when printer is off (no API key needed)
-* Sample rate is every 60 seconds when not printing
-* Sample rate is every 10 seconds when printing
-* Fully configurable from the web interface (not required to update Settings.h)
-* Supports OTA (loading firmware over WiFi connection on same LAN)
-* Basic Authentication to protect your settings
-* Update firmware through web interface from a compiled binary
-* Can query the Octoprint [PSU Control plugin](https://plugins.octoprint.org/plugins/psucontrol/) to enter clock or blank mode when PSU is off
-* Repetier support -- define in Settings.h
+接线:
 
-## Required Parts
-* Wemos D1 Mini: https://amzn.to/2ImqD1n
-* 0.96" OLED I2C 128x64 Display (12864) SSD1306: https://amzn.to/3cyJekU
-* (optional) 1.3" I2C OLED Display: https://amzn.to/2IP0gRU (must uncomment `#define DISPLAY_SH1106` in Settings.h)
+| OLED | Wemos D1 Mini |
+|------|---------------|
+| SDA  | D2 |
+| SCL  | D1(`Settings.h` 当前默认值;Easy Monitor Board 也用 D1。若按原项目接线则改为 D5) |
+| VCC  | 5V |
+| GND  | GND |
 
-## Wiring for the Wemos D1 Mini to the I2C SSD1306 OLED
-SDA -> D2
-SCL -> D5 / D1 (D1 for Easy Monitor Board)
-VCC -> 5V+
-GND -> GND-
+按钮(可选):一端接 **D3**,另一端接 **GND**(使用内部上拉,无需外接电阻)。短按切换到下一屏。D3 即 GPIO0,上电或复位时不要按住,否则会进入烧录模式。引脚可通过 `Settings.h` 的 `BUTTON_PIN` 修改。
 
-![Printer Monitor Wire Diagram](/images/printer_monitor_wiring.jpg)
+I2C 地址默认 `0x3c`(`I2C_DISPLAY_ADDRESS`)。
 
-## 3D Printed Case by Qrome
-https://www.thingiverse.com/thing:2884823 -- for the 0.96" OLED Display
-https://www.thingiverse.com/thing:2934049 -- for the 1.3" OLED Display
+![接线图](/images/printer_monitor_wiring.jpg)
 
-## Firmware Update (Pre-compiled Binaries)
-You can upload pre-compiled firmware from the web interface: Main Menu -> "Firmware Update".
+3D 打印外壳(Qrome 设计):
+- 0.96" OLED:https://www.thingiverse.com/thing:2884823
+- 1.3" OLED:https://www.thingiverse.com/thing:2934049
 
-| Binary | Hardware | Display | Server |
-|--------|----------|---------|--------|
-| `printermonitor.ino.d1_mini_SSD1306.bin` | Wemos D1 Mini | 0.96" SSD1306 | OctoPrint |
-| `printermonitor.ino.d1_mini_SH1106.bin` | Wemos D1 Mini | 1.3" SH1106 | OctoPrint |
-| `printermonitor.ino.d1_mini_repetier_SSD1306.bin` | Wemos D1 Mini | 0.96" SSD1306 | Repetier |
-| `printermonitor.ino.d1_mini_repetier_SH1106.bin` | Wemos D1 Mini | 1.3" SH1106 | Repetier |
-| `printermonitor.ino.d1_mini_easyboard.bin` | Easy Monitor Board | 0.96" SSD1306 | OctoPrint |
-| `printermonitor.ino.d1_mini_easyboard_repetier.bin` | Easy Monitor Board | 0.96" SSD1306 | Repetier |
+## 编译与烧录(PlatformIO)
 
-## Compiling and Loading to Wemos D1 Mini
-It is recommended to use Arduino IDE. You will need to configure Arduino IDE to work with the Wemos board and USB port and install the required USB drivers.
-* USB CH340G drivers: https://sparks.gogo.co.nz/ch340.html
-* Enter `http://arduino.esp8266.com/stable/package_esp8266com_index.json` into Additional Board Manager URLs field.
-* Open Boards Manager from Tools > Board menu and install esp8266 Core platform version 2.5.2
-* Select Board: "LOLIN(WEMOS) D1 R2 & mini"
-* Set 1M SPIFFS -- this project uses SPIFFS for saving and reading configuration settings.
+项目在 `printermonitor/` 目录下,环境名为 `d1_mini`。
 
-## Loading Supporting Library Files in Arduino
-Use the Arduino guide for details on how to install and manage libraries: https://www.arduino.cc/en/Guide/Libraries
+```bash
+cd printermonitor
+pio run                  # 编译
+pio run -t upload        # USB 烧录
+pio device monitor       # 串口监视器(115200)
+```
 
-**Packages** -- the following packages and libraries are used (download and install):
-* `ESP8266WiFi.h`
-* `ESP8266WebServer.h`
-* `ESP8266HTTPClient.h`
-* `WiFiManager.h` --> https://github.com/tzapu/WiFiManager
-* `ESP8266mDNS.h`
-* `ArduinoOTA.h` --> Arduino OTA Library
-* `SSD1306Wire.h` --> https://github.com/ThingPulse/esp8266-oled-ssd1306/releases/tag/4.1.0 (version 4.1.0)
-* `OLEDDisplayUi.h`
+`platformio.ini` 要点:`platform = espressif8266`、`board = d1_mini`、`board_build.filesystem = littlefs`。依赖会自动安装:
 
-Note: ArduinoJson (version 5.13.1) is included in the project.
+- `tzapu/WiFiManager` ^2.0.17
+- `thingpulse/ESP8266 and ESP32 OLED driver for SSD1306 displays` ^4.6.1
+- ArduinoJson 5.x 已内置在 `printermonitor/libs/ArduinoJson`
 
-## Initial Configuration
-All settings may be managed from the Web Interface, however, you may update the **Settings.h** file manually -- but it is not required.
-* If you are using the Easy Monitor Board you must set `const int SCL_PIN = D1` in Settings.h.
-* By default OctoPrint client is selected. If you wish to use Repetier then uncomment `//#define USE_REPETIER_CLIENT` in Settings.h.
-* Your OctoPrint API Key from OctoPrint -> User Settings -> Current API Key (similar for Repetier API Key).
-* Weather is powered by Open-Meteo (free, no API key needed). Just enter your city name and GPS coordinates.
+编译选项在 `Settings.h` 中修改:
 
-NOTE: The settings in Settings.h are the default settings for the first loading. After loading you will manage changes via the Web Interface. If you want to change settings again in Settings.h, you will need to erase the file system on the Wemos or use the "Reset Settings" option in the Web Interface.
+| 选项 | 作用 |
+|------|------|
+| `#define USE_REPETIER_CLIENT` | 使用 Repetier Server(默认 Moonraker) |
+| `#define DISPLAY_SH1106` | 使用 1.3" SH1106 屏(默认 SSD1306) |
+| `SCL_PIN` | SCL 引脚(`D1` 或 `D5`) |
 
-## Web Interface
-The Printer Monitor uses **WiFiManager** so when it can't find the last network it was connected to, it will become an **AP Hotspot** -- connect to it with your phone and you can then enter your WiFi connection information.
+### 无线更新
 
-After connecting to your WiFi network it will display the IP address assigned to it, which can be used to open a browser to the Web Interface. **Everything** can be configured there.
+首次烧录后,可在网页菜单 **Firmware Update** 上传 `pio run` 生成的 `.pio/build/d1_mini/firmware.bin`,或使用 ArduinoOTA。
+
+## 初次配置
+
+1. 首次启动(或找不到上次的 WiFi)时,设备会开启 **WiFiManager 热点**,用手机连接后填写 WiFi 信息。
+2. 连上后屏幕会显示分配到的 IP,浏览器打开即可进入网页界面。
+3. 在 **Configure** 中填写 Moonraker 地址(不要带 `http://`)、端口(默认 7125)、可选 API Key / 认证信息、第二台打印机、时区、时钟格式等。
+4. 在 **Weather** 中填写城市名、纬度、经度、单位(公制 / 英制)和语言。
+
+说明:`Settings.h` 里的值只是**首次启动的默认值**。之后的修改保存在设备文件系统(`/conf.txt`)中;若想重新使用 `Settings.h` 的值,需要擦除文件系统或在网页中使用 **Reset Settings**。
+
+### 网页菜单
+
+`/`(状态)、`/configure`、`/configureweather`、`/systemreset`、`/forgetwifi`、`/update`。
 
 <p align="center">
   <img src="/images/shot_01.png" width="200"/>

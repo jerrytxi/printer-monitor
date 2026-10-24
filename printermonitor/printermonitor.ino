@@ -86,11 +86,16 @@ boolean displayOn = true;
 
 // Printer Client
 #if defined(USE_REPETIER_CLIENT)
-  RepetierClient printerClient(PrinterApiKey, PrinterServer, PrinterPort, PrinterAuthUser, PrinterAuthPass, HAS_PSU);
+  RepetierClient printerClient( PrinterApiKey,  PrinterServer,  PrinterPort,  PrinterAuthUser,  PrinterAuthPass, HAS_PSU);
+  RepetierClient printerClient2(Printer2ApiKey, Printer2Server, Printer2Port, Printer2AuthUser, Printer2AuthPass, false);
+  RepetierClient* pActiveClient = &printerClient;
 #else
-  MoonrakerClient printerClient(PrinterApiKey, PrinterServer, PrinterPort, PrinterAuthUser, PrinterAuthPass, HAS_PSU);
+  MoonrakerClient printerClient( PrinterApiKey,  PrinterServer,  PrinterPort,  PrinterAuthUser,  PrinterAuthPass, HAS_PSU);
+  MoonrakerClient printerClient2(Printer2ApiKey, Printer2Server, Printer2Port, Printer2AuthUser, Printer2AuthPass, false);
+  MoonrakerClient* pActiveClient = &printerClient;
 #endif
-int printerCount = 0;
+int activePrinterIndex = 0;
+unsigned long lastPrinterSwitchMs = 0;
 
 // Weather Client
 OpenMeteoAPI weatherClient(WeatherCity, WeatherLat, WeatherLon, IS_METRIC);
@@ -282,6 +287,7 @@ void setup() {
   
   // Initialize digital pin for LED (little blue light on the Wemos D1 Mini)
   pinMode(externalLight, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   //Some Defaults before loading from Config.txt
   PrinterPort = printerClient.getPrinterPort();
@@ -448,6 +454,35 @@ void findMDNS() {
 //************************************************************
 void loop() {
 
+  // --- Button: short press shows the next screen ---
+  static boolean lastButtonState = HIGH;
+  static unsigned long lastButtonChangeMs = 0;
+  boolean buttonState = digitalRead(BUTTON_PIN);
+  if (buttonState != lastButtonState && millis() - lastButtonChangeMs > 50) {
+    lastButtonChangeMs = millis();
+    lastButtonState = buttonState;
+    if (buttonState == LOW) {
+      ui.nextFrame();
+    }
+  }
+
+  // --- Printer 2 rotation ---
+  if (Printer2Server != "" && printerClient.isPrinting() && printerClient2.isPrinting()) {
+    if (millis() - lastPrinterSwitchMs >= (unsigned long)secondsBetweenPrinterSwitch * 1000UL) {
+      lastPrinterSwitchMs = millis();
+      activePrinterIndex = (activePrinterIndex + 1) % 2;
+      pActiveClient = (activePrinterIndex == 0) ? &printerClient : &printerClient2;
+      isClockOn = false; // force display refresh
+    }
+  } else {
+    // Printer 2 not printing (or not configured) — stay on printer 1
+    if (activePrinterIndex != 0) {
+      activePrinterIndex = 0;
+      pActiveClient = &printerClient;
+      isClockOn = false;
+    }
+  }
+
   // Skip network calls during frame transitions to prevent display stuttering
   boolean canDoNetwork = (ui.getUiState()->frameState == FIXED);
 
@@ -465,6 +500,10 @@ void loop() {
       lastMinute = timeClient.getMinutes(); // reset the check value
       printerClient.getPrinterJobResults();
       printerClient.getPrinterPsuState();
+      if (Printer2Server != "") {
+        printerClient2.getPrinterJobResults();
+        printerClient2.getPrinterPsuState();
+      }
       ledOnOff(false);
     } else if (printerClient.isPrinting()) {
       if (lastSecond != timeClient.getSeconds() && timeClient.getSeconds().endsWith("0")) {
@@ -473,6 +512,10 @@ void loop() {
         ledOnOff(true);
         printerClient.getPrinterJobResults();
         printerClient.getPrinterPsuState();
+        if (Printer2Server != "") {
+          printerClient2.getPrinterJobResults();
+          printerClient2.getPrinterPsuState();
+        }
         ledOnOff(false);
       }
     }
@@ -558,6 +601,15 @@ void handleUpdateConfig() {
   PrinterAuthUser = server.arg("octoUser");
   PrinterAuthPass = server.arg("octoPass");
   DISPLAYCLOCK = server.hasArg("isClockEnabled");
+    Printer2ApiKey   = server.arg("Printer2ApiKey");
+    Printer2HostName = server.arg("Printer2HostName");
+    Printer2Server   = server.arg("Printer2Address");
+    Printer2Port     = server.arg("Printer2Port").toInt();
+    Printer2AuthUser = server.arg("Printer2User");
+    Printer2AuthPass = server.arg("Printer2Pass");
+    if (server.arg("printerSwitch").toInt() > 0) {
+      secondsBetweenPrinterSwitch = server.arg("printerSwitch").toInt();
+    }
   IS_24HOUR = server.hasArg("is24hour");
   INVERT_DISPLAY = server.hasArg("invDisp");
   USE_FLASH = server.hasArg("useFlash");
@@ -681,6 +733,16 @@ void handleConfigure() {
   }
   CHANGE_FORM +=      "<p><label>" + printerClient.getPrinterType() + " User (only needed if you have haproxy or basic auth turned on)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='octoUser' value='%OCTOUSER%' maxlength='30'></p>"
                       "<p><label>" + printerClient.getPrinterType() + " Password </label><input class='w3-input w3-border w3-margin-bottom' type='password' name='octoPass' value='%OCTOPASS%'></p>";
+  CHANGE_FORM +=      "<hr><h2>Printer 2 Config (optional):</h2>"
+                      "<p><small>Leave Address blank to disable. Both printers must be printing for rotation to activate.</small></p>"
+                      "<p><label>Printer 2 API Key</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2ApiKey' value='%P2KEY%' maxlength='60'></p>"
+                      "<p><label>Printer 2 Host Name (for display)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2HostName' value='%P2HOST%' maxlength='60'></p>"
+                      "<p><label>Printer 2 Address (do not include http://)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2Address' value='%P2ADDRESS%' maxlength='60'></p>"
+                      "<p><label>Printer 2 Port</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2Port' value='%P2PORT%' maxlength='5' onkeypress='return isNumberKey(event)'></p>"
+                      "<p><label>Printer 2 User (only needed for haproxy / basic auth)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2User' value='%P2USER%' maxlength='30'></p>"
+                      "<p><label>Printer 2 Password</label><input class='w3-input w3-border w3-margin-bottom' type='password' name='Printer2Pass' value='%P2PASS%'></p>"
+                      "<p><label>Seconds to display each printer (when both printing)</label>"
+                      "<input class='w3-input w3-border w3-margin-bottom' type='text' name='printerSwitch' value='%PSWITCH%' maxlength='5' onkeypress='return isNumberKey(event)'></p>";
 
 
 
@@ -712,6 +774,13 @@ void handleConfigure() {
   form.replace("%OCTOPORT%", String(PrinterPort));
   form.replace("%OCTOUSER%", PrinterAuthUser);
   form.replace("%OCTOPASS%", PrinterAuthPass);
+  form.replace("%P2KEY%", Printer2ApiKey);
+  form.replace("%P2HOST%", Printer2HostName);
+  form.replace("%P2ADDRESS%", Printer2Server);
+  form.replace("%P2PORT%", String(Printer2Port));
+  form.replace("%P2USER%", Printer2AuthUser);
+  form.replace("%P2PASS%", Printer2AuthPass);
+  form.replace("%PSWITCH%", String(secondsBetweenPrinterSwitch));
 
   server.sendContent(form);
 
@@ -1012,8 +1081,8 @@ void flashLED(int number, int delayTime) {
 }
 
 void drawScreen1(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
-  String bed = printerClient.getValueRounded(printerClient.getTempBedActual());
-  String tool = printerClient.getValueRounded(printerClient.getTempToolActual());
+  String bed = pActiveClient->getValueRounded(pActiveClient->getTempBedActual());
+  String tool = pActiveClient->getValueRounded(pActiveClient->getTempToolActual());
   display->setTextAlignment(TEXT_ALIGN_CENTER);
   display->setFont(ArialMT_Plain_16);
   if (bed != "0") {
@@ -1041,7 +1110,7 @@ void drawScreen2(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int
   display->drawString(64 + x, 0 + y, "Time Remaining");
   //display->setTextAlignment(TEXT_ALIGN_LEFT);
   display->setFont(ArialMT_Plain_24);
-  int val = printerClient.getProgressPrintTimeLeft().toInt();
+  int val = pActiveClient->getProgressPrintTimeLeft().toInt();
   int hours = numberOfHours(val);
   int minutes = numberOfMinutes(val);
   int seconds = numberOfSeconds(val);
@@ -1057,7 +1126,7 @@ void drawScreen3(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int
   display->drawString(64 + x, 0 + y, "Printing Time");
   //display->setTextAlignment(TEXT_ALIGN_LEFT);
   display->setFont(ArialMT_Plain_24);
-  int val = printerClient.getProgressPrintTime().toInt();
+  int val = pActiveClient->getProgressPrintTime().toInt();
   int hours = numberOfHours(val);
   int minutes = numberOfMinutes(val);
   int seconds = numberOfSeconds(val);
@@ -1073,9 +1142,9 @@ void drawClock(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16
   if (IS_24HOUR) {
     displayTime = timeClient.getHours() + ":" + timeClient.getMinutes() + ":" + timeClient.getSeconds(); 
   }
-  String displayName = PrinterHostName;
-  if (printerClient.getPrinterType() == "Repetier") {
-    displayName = printerClient.getPrinterName();
+  String displayName = pActiveClient->getPrinterName();
+  if (displayName == "") {
+    displayName = (activePrinterIndex == 0) ? PrinterHostName : Printer2HostName;
   }
   display->setFont(ArialMT_Plain_16);
   display->drawString(64 + x, 0 + y, displayName);
@@ -1147,11 +1216,11 @@ void drawHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state) {
 
   display->setFont(ArialMT_Plain_16);
   display->setTextAlignment(TEXT_ALIGN_LEFT);
-  String percent = String(printerClient.getProgressCompletion()) + "%";
+  String percent = String(pActiveClient->getProgressCompletion()) + "%";
   display->drawString(64, 48, percent);
   
   // Draw indicator to show next update
-  int updatePos = (printerClient.getProgressCompletion().toFloat() / float(100)) * 128;
+  int updatePos = (pActiveClient->getProgressCompletion().toFloat() / float(100)) * 128;
   display->drawRect(0, 41, 128, 6);
   display->drawHorizontalLine(0, 42, updatePos);
   display->drawHorizontalLine(0, 43, updatePos);
@@ -1168,17 +1237,17 @@ void drawClockHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state) {
   if (!IS_24HOUR) {
     display->drawString(0, 48, timeClient.getAmPm());
     display->setTextAlignment(TEXT_ALIGN_CENTER);
-    if (printerClient.isPSUoff()) {
+    if (pActiveClient->isPSUoff()) {
       display->drawString(64, 47, "psu off");
-    } else if (printerClient.getState() == "Operational") {
+    } else if (pActiveClient->getState() == "Operational") {
       display->drawString(64, 47, "online");
     } else {
       display->drawString(64, 47, "offline");
     }
   } else {
-    if (printerClient.isPSUoff()) {
+    if (pActiveClient->isPSUoff()) {
       display->drawString(0, 47, "psu off");
-    } else if (printerClient.getState() == "Operational") {
+    } else if (pActiveClient->getState() == "Operational") {
       display->drawString(0, 47, "online");
     } else {
       display->drawString(0, 47, "offline");
@@ -1248,6 +1317,13 @@ void writeSettings() {
     f.println("isMetric=" + String(IS_METRIC));
     f.println("weatherLang=" + WeatherLanguage);
     f.println("hasPSU=" + String(HAS_PSU));
+    f.println("printer2ApiKey="   + Printer2ApiKey);
+    f.println("printer2HostName=" + Printer2HostName);
+    f.println("printer2Server="   + Printer2Server);
+    f.println("printer2Port="     + String(Printer2Port));
+    f.println("printer2AuthUser=" + Printer2AuthUser);
+    f.println("printer2AuthPass=" + Printer2AuthPass);
+    f.println("printerSwitch="    + String(secondsBetweenPrinterSwitch));
   }
   f.close();
   readSettings();
@@ -1382,9 +1458,47 @@ void readSettings() {
       WeatherLanguage.trim();
       Serial.println("WeatherLanguage=" + WeatherLanguage);
     }
+    if (line.indexOf("printer2ApiKey=") >= 0) {
+      Printer2ApiKey = line.substring(line.lastIndexOf("printer2ApiKey=") + 15);
+      Printer2ApiKey.trim();
+      Serial.println("Printer2ApiKey=" + Printer2ApiKey);
+    }
+    if (line.indexOf("printer2HostName=") >= 0) {
+      Printer2HostName = line.substring(line.lastIndexOf("printer2HostName=") + 17);
+      Printer2HostName.trim();
+      Serial.println("Printer2HostName=" + Printer2HostName);
+    }
+    if (line.indexOf("printer2Server=") >= 0) {
+      Printer2Server = line.substring(line.lastIndexOf("printer2Server=") + 15);
+      Printer2Server.trim();
+      Serial.println("Printer2Server=" + Printer2Server);
+    }
+    if (line.indexOf("printer2Port=") >= 0) {
+      Printer2Port = line.substring(line.lastIndexOf("printer2Port=") + 13).toInt();
+      Serial.println("Printer2Port=" + String(Printer2Port));
+    }
+    if (line.indexOf("printer2AuthUser=") >= 0) {
+      Printer2AuthUser = line.substring(line.lastIndexOf("printer2AuthUser=") + 17);
+      Printer2AuthUser.trim();
+      Serial.println("Printer2AuthUser=" + Printer2AuthUser);
+    }
+    if (line.indexOf("printer2AuthPass=") >= 0) {
+      Printer2AuthPass = line.substring(line.lastIndexOf("printer2AuthPass=") + 17);
+      Printer2AuthPass.trim();
+      Serial.println("Printer2AuthPass=" + Printer2AuthPass);
+    }
+    if (line.indexOf("printerSwitch=") >= 0) {
+      int sw = line.substring(line.lastIndexOf("printerSwitch=") + 14).toInt();
+      if (sw > 0) secondsBetweenPrinterSwitch = sw;
+      Serial.println("secondsBetweenPrinterSwitch=" + String(secondsBetweenPrinterSwitch));
+    }
   }
   fr.close();
   printerClient.updatePrintClient(PrinterApiKey, PrinterServer, PrinterPort, PrinterAuthUser, PrinterAuthPass, HAS_PSU);
+  if (Printer2Server != "") {
+    printerClient2.updatePrintClient(Printer2ApiKey, Printer2Server, Printer2Port, Printer2AuthUser, Printer2AuthPass, false);
+    printerClient2.setPrinterName(Printer2HostName);
+  }
   weatherClient.updateLocation(WeatherCity, WeatherLat, WeatherLon);
   weatherClient.setMetric(IS_METRIC);
   weatherClient.setLanguage(WeatherLanguage);
@@ -1406,7 +1520,7 @@ void checkDisplay() {
   if (!displayOn && DISPLAYCLOCK) {
     enableDisplay(true);
   }
-  if (displayOn && !printerClient.isPrinting() && !DISPLAYCLOCK) {
+  if (displayOn && !printerClient.isPrinting() && !printerClient2.isPrinting() && !DISPLAYCLOCK) {
     // Put Display to sleep
     display.clear();
     display.display();
@@ -1420,7 +1534,7 @@ void checkDisplay() {
     Serial.println("Printer is offline going down to sleep...");
     return;    
   } else if (!displayOn && !DISPLAYCLOCK) {
-    if (printerClient.isOperational()) {
+    if (printerClient.isOperational() || (Printer2Server != "" && printerClient2.isOperational())) {
       // Wake the Screen up
       enableDisplay(true);
       display.clear();
@@ -1435,7 +1549,7 @@ void checkDisplay() {
       return;
     }
   } else if (DISPLAYCLOCK) {
-    if ((!printerClient.isPrinting() || printerClient.isPSUoff()) && !isClockOn) {
+    if (((!printerClient.isPrinting() && !printerClient2.isPrinting()) || printerClient.isPSUoff()) && !isClockOn) {
       Serial.println("Clock Mode is turned on.");
       if (!DISPLAYWEATHER) {
         ui.disableAutoTransition();
@@ -1449,7 +1563,7 @@ void checkDisplay() {
       }
       ui.setOverlays(clockOverlay, numberOfOverlays);
       isClockOn = true;
-    } else if (printerClient.isPrinting() && !printerClient.isPSUoff() && isClockOn) {
+    } else if ((printerClient.isPrinting() || printerClient2.isPrinting()) && !printerClient.isPSUoff() && isClockOn) {
       Serial.println("Printer Monitor is active.");
       ui.setFrames(frames, numberOfFrames);
       ui.setOverlays(overlays, numberOfOverlays);

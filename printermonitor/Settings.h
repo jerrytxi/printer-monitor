@@ -67,6 +67,15 @@ int PrinterPort = 7125;        // Moonraker default port is 7125
 String PrinterAuthUser = "";      // only used if you have haproxy or basic athentintication turned on (not default)
 String PrinterAuthPass = "";      // only used with haproxy or basic auth (only needed if you must authenticate)
 
+// Printer 2 Configuration (optional - leave Server blank to disable)
+String Printer2ApiKey   = "";
+String Printer2HostName = "";
+String Printer2Server   = "";     // IP or Address of your second printer (leave blank to disable)
+int    Printer2Port     = 7125;
+String Printer2AuthUser = "";
+String Printer2AuthPass = "";
+int    secondsBetweenPrinterSwitch = 30;  // seconds to display each printer when both are printing
+
 // Weather Configuration (uses Open-Meteo API - free, no API key required)
 boolean DISPLAYWEATHER = true; // true = show weather when not printing / false = no weather
 String WeatherCity = "";        // City name for display
@@ -95,6 +104,9 @@ const int SDA_PIN = D2;
 const int SCL_PIN = D1; // original code D5 -- Monitor Easy Board use D1
 boolean INVERT_DISPLAY = false; // true = pins at top | false = pins at the bottom
 //#define DISPLAY_SH1106       // Uncomment this line to use the SH1106 display -- SSD1306 is used by default and is most common
+
+// Button Settings
+const int BUTTON_PIN = D3; // Push button between D3 and GND (internal pull-up). Short press = next screen. D3 is GPIO0: do not hold it while powering up / resetting
 
 // LED Settings
 const int externalLight = LED_BUILTIN; // LED will always flash on bootup or Wifi Errors
