@@ -54,6 +54,8 @@ private:
     String progressPrintTime;
     String progressPrintTimeLeft;
     String state;
+    String jobState;  // raw Klipper print_stats.state, lower case (standby/printing/paused/complete/error/cancelled)
+    String message;   // print_stats.message (error reason)
     String toolTemp;
     String toolTargetTemp;
     String filamentLength;
@@ -83,6 +85,8 @@ public:
   String getProgressPrintTime();
   String getProgressPrintTimeLeft();
   String getState();
+  String getJobState();
+  String getErrorMessage();
   boolean isPrinting();
   boolean isOperational();
   boolean isPSUoff();

@@ -87,6 +87,8 @@ public:
   String getProgressPrintTime();
   String getProgressPrintTimeLeft();
   String getState();
+  String getJobState() { return ""; }
+  String getErrorMessage() { return ""; }
   boolean isPrinting();
   boolean isOperational();
   boolean isPSUoff();

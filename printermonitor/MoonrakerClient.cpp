@@ -185,6 +185,7 @@ void MoonrakerClient::getPrinterJobResults() {
     Serial.println("Moonraker Data Parsing failed: " + String(myServer) + ":" + String(myPort));
     printerData.error = "Moonraker Data Parsing failed: " + String(myServer) + ":" + String(myPort);
     printerData.state = "";
+    printerData.jobState = "";
     printerData.isPrinting = false;
     return;
   }
@@ -198,6 +199,10 @@ void MoonrakerClient::getPrinterJobResults() {
   const char* rawState = printStats["state"];
   String moonrakerState = rawState ? String(rawState) : "";
   moonrakerState.toLowerCase();
+
+  printerData.jobState = moonrakerState;
+  const char* rawMessage = printStats["message"];
+  printerData.message = rawMessage ? String(rawMessage) : "";
 
   printerData.isPrinting = (moonrakerState == "printing");
   if (printerData.isPrinting) {
@@ -283,6 +288,8 @@ void MoonrakerClient::resetPrintData() {
   printerData.progressPrintTime = "";
   printerData.progressPrintTimeLeft = "";
   printerData.state = "";
+  printerData.jobState = "";
+  printerData.message = "";
   printerData.toolTemp = "";
   printerData.toolTargetTemp = "";
   printerData.filamentLength = "";
@@ -343,6 +350,14 @@ boolean MoonrakerClient::isPrinting() {
 
 boolean MoonrakerClient::isPSUoff() {
   return printerData.isPSUoff;
+}
+
+String MoonrakerClient::getJobState() {
+  return printerData.jobState;
+}
+
+String MoonrakerClient::getErrorMessage() {
+  return printerData.message;
 }
 
 boolean MoonrakerClient::isOperational() {

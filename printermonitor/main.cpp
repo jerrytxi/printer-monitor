@@ -64,12 +64,29 @@ void drawHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state);
 void drawClock(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void drawWeather(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void drawClockHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state);
+void drawAlert(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
+void checkAlerts();
+void startAlert(int type, int printerIndex);
+void endAlert();
 
 // Set the number of Frames supported
 const int numberOfFrames = 3;
 FrameCallback frames[numberOfFrames];
 FrameCallback clockFrame[2];
 boolean isClockOn = false;
+
+// Print finished / print error alert page
+enum AlertType { ALERT_NONE, ALERT_COMPLETE, ALERT_ERROR };
+const unsigned long ALERT_COMPLETE_MS = 5UL * 60UL * 1000UL;   // show "print complete" for 5 minutes
+const unsigned long ALERT_ERROR_MS = 15UL * 60UL * 1000UL;     // show "print error" for 15 minutes
+FrameCallback alertFrame[1];
+int alertType = ALERT_NONE;
+int alertPrinterIndex = 0;
+unsigned long alertStartMs = 0;
+String alertFileName = "";
+String alertMessage = "";
+long alertDuration = 0;
+String lastJobState[2] = { "", "" };   // previous Klipper print_stats.state of printer 1 / 2
 
 OverlayCallback overlays[] = { drawHeaderOverlay };
 OverlayCallback clockOverlay[] = { drawClockHeaderOverlay };
@@ -501,7 +518,11 @@ void loop() {
     lastButtonChangeMs = millis();
     lastButtonState = buttonState;
     if (buttonState == LOW) {
-      ui.nextFrame();
+      if (alertType != ALERT_NONE) {
+        endAlert();
+      } else {
+        ui.nextFrame();
+      }
     }
   }
 
@@ -560,6 +581,7 @@ void loop() {
     }
   }
 
+  checkAlerts();  // Detect print complete / error and show the alert page
   checkDisplay(); // Check to see if the printer is on or offline and change display.
 
   ui.update();
@@ -1556,6 +1578,9 @@ int getMinutesFromLastDisplay() {
 
 // Toggle on and off the display if user defined times
 void checkDisplay() {
+  if (alertType != ALERT_NONE) {
+    return; // the alert page owns the display until it is dismissed or times out
+  }
   if (!displayOn && DISPLAYCLOCK) {
     enableDisplay(true);
   }
@@ -1610,6 +1635,120 @@ void checkDisplay() {
       isClockOn = false;
     }
   }
+}
+
+// Shorten text with ".." so it fits in maxWidth pixels (uses the current font)
+String fitText(OLEDDisplay *display, String text, int maxWidth) {
+  if (display->getStringWidth(text) <= maxWidth) {
+    return text;
+  }
+  while (text.length() > 1 && display->getStringWidth(text + "..") > maxWidth) {
+    text.remove(text.length() - 1);
+  }
+  return text + "..";
+}
+
+void drawAlert(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
+  display->setTextAlignment(TEXT_ALIGN_CENTER);
+  display->setFont(ArialMT_Plain_10);
+  String file = fitText(display, alertFileName, 124);
+
+  if (alertType == ALERT_COMPLETE) {
+    display->setFont(ArialMT_Plain_16);
+    display->drawString(64 + x, 0 + y, "Print Complete");
+    display->setFont(ArialMT_Plain_10);
+    display->drawString(64 + x, 20 + y, file);
+    display->setFont(ArialMT_Plain_24);
+    String time = zeroPad(numberOfHours(alertDuration)) + ":" + zeroPad(numberOfMinutes(alertDuration)) + ":" + zeroPad(numberOfSeconds(alertDuration));
+    display->drawString(64 + x, 34 + y, time);
+  } else if (alertType == ALERT_ERROR) {
+    // Blink the title bar (inverted every 500 ms) so the error is noticeable
+    boolean inverted = (millis() / 500) % 2;
+    display->setFont(ArialMT_Plain_16);
+    if (inverted) {
+      display->fillRect(0 + x, 0 + y, 128, 17);
+      display->setColor(BLACK);
+    }
+    display->drawString(64 + x, 0 + y, "PRINT ERROR");
+    display->setColor(WHITE);
+    display->setFont(ArialMT_Plain_10);
+    if (alertMessage != "") {
+      display->setTextAlignment(TEXT_ALIGN_LEFT);
+      display->drawStringMaxWidth(0 + x, 19 + y, 128, alertMessage.substring(0, 60));
+      display->setTextAlignment(TEXT_ALIGN_CENTER);
+      display->drawString(64 + x, 53 + y, file);
+    } else {
+      display->drawString(64 + x, 30 + y, file);
+    }
+  }
+}
+
+// Look for Printing/Paused -> Complete/Error transitions on each configured printer.
+// A cancelled print goes to "standby"/"cancelled" and does not raise an alert, and
+// a state that was already complete/error at boot is ignored (only transitions count).
+void checkAlerts() {
+  int count = (Printer2Server != "") ? 2 : 1;
+  for (int i = 0; i < count; i++) {
+    String current = (i == 0) ? printerClient.getJobState() : printerClient2.getJobState();
+    if (current == "") {
+      continue; // no data yet / request failed
+    }
+    String previous = lastJobState[i];
+    lastJobState[i] = current;
+
+    if (previous == "printing" || previous == "paused") {
+      if (current == "complete") {
+        startAlert(ALERT_COMPLETE, i);
+      } else if (current == "error") {
+        startAlert(ALERT_ERROR, i);
+      }
+    } else if (alertType != ALERT_NONE && alertPrinterIndex == i && current == "printing") {
+      endAlert(); // a new print started on the printer that raised the alert
+    }
+  }
+
+  if (alertType != ALERT_NONE) {
+    unsigned long limit = (alertType == ALERT_ERROR) ? ALERT_ERROR_MS : ALERT_COMPLETE_MS;
+    if (millis() - alertStartMs >= limit) {
+      endAlert();
+    }
+  }
+}
+
+void startAlert(int type, int printerIndex) {
+  alertType = type;
+  alertPrinterIndex = printerIndex;
+  alertStartMs = millis();
+  if (printerIndex == 0) {
+    alertFileName = printerClient.getFileName();
+    alertMessage = printerClient.getErrorMessage();
+    alertDuration = printerClient.getProgressPrintTime().toInt();
+  } else {
+    alertFileName = printerClient2.getFileName();
+    alertMessage = printerClient2.getErrorMessage();
+    alertDuration = printerClient2.getProgressPrintTime().toInt();
+  }
+  if (Printer2Server != "") {
+    alertFileName = String(printerIndex + 1) + ": " + alertFileName; // which printer
+  }
+  Serial.println(String("Alert: ") + (type == ALERT_ERROR ? "print error " : "print complete ") + alertFileName);
+
+  if (!displayOn) {
+    enableDisplay(true);
+  }
+  alertFrame[0] = drawAlert;
+  ui.setFrames(alertFrame, 1);
+  ui.setOverlays(overlays, 0);
+  ui.disableAutoTransition();
+}
+
+void endAlert() {
+  alertType = ALERT_NONE;
+  ui.setFrames(frames, numberOfFrames);
+  ui.setOverlays(overlays, numberOfOverlays);
+  ui.enableAutoTransition();
+  isClockOn = false; // let checkDisplay() pick clock / printing / sleep again
+  Serial.println("Alert dismissed.");
 }
 
 void enableDisplay(boolean enable) {
