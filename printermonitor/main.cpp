@@ -556,6 +556,7 @@ void loop() {
     lastButtonChangeMs = millis();
     lastButtonState = buttonState;
     if (buttonState == LOW) {
+      Serial.println(String("Button pressed: ") + (alertType != ALERT_NONE ? "dismiss alert" : "next frame"));
       if (alertType != ALERT_NONE) {
         endAlert();
       } else {
