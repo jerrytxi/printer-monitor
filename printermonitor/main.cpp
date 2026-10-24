@@ -66,6 +66,7 @@ void drawWeather(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int
 void drawClockHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state);
 void drawAlert(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void checkAlerts();
+void sendTimezoneOptions(int selected);
 void updateAlertEffect();
 void startAlert(int type, int printerIndex);
 void endAlert();
@@ -144,8 +145,6 @@ static const char WEB_ACTIONS[] PROGMEM =  "<a class='w3-bar-item w3-button' hre
                       "<a class='w3-bar-item w3-button' href='/forgetwifi' onclick='return confirm(\"Do you want to forget to WiFi connection?\")'><i class='fa fa-wifi'></i> Forget WiFi</a>"
                       "<a class='w3-bar-item w3-button' href='/update'><i class='fa fa-wrench'></i> Firmware Update</a>"
                       "<a class='w3-bar-item w3-button' href='https://github.com/Qrome' target='_blank'><i class='fa fa-question-circle'></i> About</a>";
-
-String CHANGE_FORM =  ""; // moved to config to make it dynamic
 
 static const char CLOCK_FORM[] PROGMEM = "<hr><p><input name='isClockEnabled' class='w3-check w3-margin-top' type='checkbox' %IS_CLOCK_CHECKED%> Display Clock when printer is off</p>"
                       "<p><input name='is24hour' class='w3-check w3-margin-top' type='checkbox' %IS_24HOUR_CHECKED%> Use 24 Hour Clock (military time)</p>"
@@ -780,6 +779,41 @@ void handleWeatherConfigure() {
   ledOnOff(false);
 }
 
+// Send TIMEZONE_OPTIONS (PROGMEM) in ~400 byte pieces, marking option `selected` as selected
+void sendTimezoneOptions(int selected) {
+  char opt[128];
+  size_t n = 0;
+  int idx = 0;
+  String batch;
+  batch.reserve(480);
+  for (PGM_P p = TIMEZONE_OPTIONS; ; p++) {
+    char c = pgm_read_byte(p);
+    if (c == 0) {
+      break;
+    }
+    if (n < sizeof(opt) - 1) {
+      opt[n++] = c;
+    }
+    if (c == '>' && n >= 9 && memcmp(opt + n - 9, "</option>", 9) == 0) {
+      opt[n] = 0;
+      String o(opt);
+      if (idx == selected) {
+        o.replace("value='" + String(idx) + "'", "value='" + String(idx) + "' selected");
+      }
+      batch += o;
+      n = 0;
+      idx++;
+      if (batch.length() > 400) {
+        server.sendContent(batch);
+        batch = "";
+      }
+    }
+  }
+  if (batch.length() > 0) {
+    server.sendContent(batch);
+  }
+}
+
 void handleConfigure() {
   if (!authentication()) {
     return server.requestAuthentication();
@@ -795,38 +829,6 @@ void handleConfigure() {
 
   html = getHeader();
   server.sendContent(html);
-
-  CHANGE_FORM =       "<form class='w3-container' action='/updateconfig' method='get'><h2>Station Config:</h2>"
-                      "<p><label>" + printerClient.getPrinterType() + " API Key (get from your server)</label>"
-                      "<input class='w3-input w3-border w3-margin-bottom' type='text' name='PrinterApiKey' id='PrinterApiKey' value='%OCTOKEY%' maxlength='60'></p>";
-  if (printerClient.getPrinterType() == "OctoPrint" || printerClient.getPrinterType() == "Moonraker") {
-    CHANGE_FORM +=      "<p><label>" + printerClient.getPrinterType() + " Host Name (usually octopi)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='PrinterHostName' value='%OCTOHOST%' maxlength='60'></p>";                        
-  }
-  CHANGE_FORM +=      "<p><label>" + printerClient.getPrinterType() + " Address (do not include http://)</label>"
-                      "<input class='w3-input w3-border w3-margin-bottom' type='text' name='PrinterAddress' id='PrinterAddress' value='%OCTOADDRESS%' maxlength='60'></p>"
-                      "<p><label>" + printerClient.getPrinterType() + " Port</label>"
-                      "<input class='w3-input w3-border w3-margin-bottom' type='text' name='PrinterPort' id='PrinterPort' value='%OCTOPORT%' maxlength='5'  onkeypress='return isNumberKey(event)'></p>";
-  if (printerClient.getPrinterType() == "Repetier") {
-    CHANGE_FORM +=    "<input type='button' value='Test Connection' onclick='testRepetier()'>"
-                      "<input type='hidden' id='selectedPrinter' value='" + printerClient.getPrinterName() + "'><p id='RepetierTest'></p>"
-                      "<script>testRepetier();</script>";                        
-  } else {
-    CHANGE_FORM +=    "<input type='button' value='Test Connection and API JSON Response' onclick='testMoonraker()'><p id='MoonrakerTest'></p>";
-  }
-  CHANGE_FORM +=      "<p><label>" + printerClient.getPrinterType() + " User (only needed if you have haproxy or basic auth turned on)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='octoUser' value='%OCTOUSER%' maxlength='30'></p>"
-                      "<p><label>" + printerClient.getPrinterType() + " Password </label><input class='w3-input w3-border w3-margin-bottom' type='password' name='octoPass' value='%OCTOPASS%'></p>";
-  CHANGE_FORM +=      "<hr><h2>Printer 2 Config (optional):</h2>"
-                      "<p><small>Leave Address blank to disable. Both printers must be printing for rotation to activate.</small></p>"
-                      "<p><label>Printer 2 API Key</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2ApiKey' value='%P2KEY%' maxlength='60'></p>"
-                      "<p><label>Printer 2 Host Name (for display)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2HostName' value='%P2HOST%' maxlength='60'></p>"
-                      "<p><label>Printer 2 Address (do not include http://)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2Address' value='%P2ADDRESS%' maxlength='60'></p>"
-                      "<p><label>Printer 2 Port</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2Port' value='%P2PORT%' maxlength='5' onkeypress='return isNumberKey(event)'></p>"
-                      "<p><label>Printer 2 User (only needed for haproxy / basic auth)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2User' value='%P2USER%' maxlength='30'></p>"
-                      "<p><label>Printer 2 Password</label><input class='w3-input w3-border w3-margin-bottom' type='password' name='Printer2Pass' value='%P2PASS%'></p>"
-                      "<p><label>Seconds to display each printer (when both printing)</label>"
-                      "<input class='w3-input w3-border w3-margin-bottom' type='text' name='printerSwitch' value='%PSWITCH%' maxlength='5' onkeypress='return isNumberKey(event)'></p>";
-
-
 
   if (printerClient.getPrinterType() == "Repetier") {
     html = "<script>function testRepetier(){var e=document.getElementById(\"RepetierTest\"),r=document.getElementById(\"PrinterAddress\").value,"
@@ -848,22 +850,58 @@ void handleConfigure() {
     server.sendContent(html);
   }
   
-  String form = CHANGE_FORM;
-  
+  // Send the station form in small pieces: heap is tight, so never build it as one big String
+  String type = printerClient.getPrinterType();
+  String form = "<form class='w3-container' action='/updateconfig' method='get'><h2>Station Config:</h2>"
+                "<p><label>" + type + " API Key (get from your server)</label>"
+                "<input class='w3-input w3-border w3-margin-bottom' type='text' name='PrinterApiKey' id='PrinterApiKey' value='%OCTOKEY%' maxlength='60'></p>";
+  if (type == "OctoPrint" || type == "Moonraker") {
+    form += "<p><label>" + type + " Host Name (usually octopi)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='PrinterHostName' value='%OCTOHOST%' maxlength='60'></p>";
+  }
   form.replace("%OCTOKEY%", PrinterApiKey);
   form.replace("%OCTOHOST%", PrinterHostName);
+  server.sendContent(form);
+
+  form = "<p><label>" + type + " Address (do not include http://)</label>"
+         "<input class='w3-input w3-border w3-margin-bottom' type='text' name='PrinterAddress' id='PrinterAddress' value='%OCTOADDRESS%' maxlength='60'></p>"
+         "<p><label>" + type + " Port</label>"
+         "<input class='w3-input w3-border w3-margin-bottom' type='text' name='PrinterPort' id='PrinterPort' value='%OCTOPORT%' maxlength='5'  onkeypress='return isNumberKey(event)'></p>";
+  if (type == "Repetier") {
+    form += "<input type='button' value='Test Connection' onclick='testRepetier()'>"
+            "<input type='hidden' id='selectedPrinter' value='" + printerClient.getPrinterName() + "'><p id='RepetierTest'></p>"
+            "<script>testRepetier();</script>";
+  } else {
+    form += "<input type='button' value='Test Connection and API JSON Response' onclick='testMoonraker()'><p id='MoonrakerTest'></p>";
+  }
   form.replace("%OCTOADDRESS%", PrinterServer);
   form.replace("%OCTOPORT%", String(PrinterPort));
+  server.sendContent(form);
+
+  form = "<p><label>" + type + " User (only needed if you have haproxy or basic auth turned on)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='octoUser' value='%OCTOUSER%' maxlength='30'></p>"
+         "<p><label>" + type + " Password </label><input class='w3-input w3-border w3-margin-bottom' type='password' name='octoPass' value='%OCTOPASS%'></p>";
   form.replace("%OCTOUSER%", PrinterAuthUser);
   form.replace("%OCTOPASS%", PrinterAuthPass);
+  server.sendContent(form);
+
+  form = "<hr><h2>Printer 2 Config (optional):</h2>"
+         "<p><small>Leave Address blank to disable. Both printers must be printing for rotation to activate.</small></p>"
+         "<p><label>Printer 2 API Key</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2ApiKey' value='%P2KEY%' maxlength='60'></p>"
+         "<p><label>Printer 2 Host Name (for display)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2HostName' value='%P2HOST%' maxlength='60'></p>"
+         "<p><label>Printer 2 Address (do not include http://)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2Address' value='%P2ADDRESS%' maxlength='60'></p>"
+         "<p><label>Printer 2 Port</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2Port' value='%P2PORT%' maxlength='5' onkeypress='return isNumberKey(event)'></p>";
   form.replace("%P2KEY%", Printer2ApiKey);
   form.replace("%P2HOST%", Printer2HostName);
   form.replace("%P2ADDRESS%", Printer2Server);
   form.replace("%P2PORT%", String(Printer2Port));
+  server.sendContent(form);
+
+  form = "<p><label>Printer 2 User (only needed for haproxy / basic auth)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='Printer2User' value='%P2USER%' maxlength='30'></p>"
+         "<p><label>Printer 2 Password</label><input class='w3-input w3-border w3-margin-bottom' type='password' name='Printer2Pass' value='%P2PASS%'></p>"
+         "<p><label>Seconds to display each printer (when both printing)</label>"
+         "<input class='w3-input w3-border w3-margin-bottom' type='text' name='printerSwitch' value='%PSWITCH%' maxlength='5' onkeypress='return isNumberKey(event)'></p>";
   form.replace("%P2USER%", Printer2AuthUser);
   form.replace("%P2PASS%", Printer2AuthPass);
   form.replace("%PSWITCH%", String(secondsBetweenPrinterSwitch));
-
   server.sendContent(form);
 
   form = FPSTR(CLOCK_FORM);
@@ -906,16 +944,21 @@ void handleConfigure() {
   themeOptions.replace(">"+String(themeColor)+"<", " selected>"+String(themeColor)+"<");
   form.replace("%THEME_OPTIONS%", themeOptions);
 
-  // Build timezone dropdown with current selection
-  String tzOptions = FPSTR(TIMEZONE_OPTIONS);
-  // Find current timezone index by matching POSIX string
+  // Stream the timezone dropdown straight from flash instead of building a ~2KB String
+  const char* tzMarker = "%TIMEZONE_OPTIONS%";
+  int tzSplit = form.indexOf(tzMarker);
+  String tzTail = form.substring(tzSplit + strlen(tzMarker));
+  form.remove(tzSplit);
+  server.sendContent(form);
+  int tzSelected = -1;
   for (int i = 0; i < TZ_COUNT; i++) {
     if (String(TZ_POSIX[i]) == TimeZone) {
-      tzOptions.replace("value='" + String(i) + "'", "value='" + String(i) + "' selected");
+      tzSelected = i;
       break;
     }
   }
-  form.replace("%TIMEZONE_OPTIONS%", tzOptions);
+  sendTimezoneOptions(tzSelected);
+  form = tzTail;
   String isUseSecurityChecked = "";
   if (IS_BASIC_AUTH) {
     isUseSecurityChecked = "checked='checked'";
