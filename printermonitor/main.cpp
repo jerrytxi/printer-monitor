@@ -66,6 +66,13 @@ void drawWeather(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int
 void drawClockHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state);
 void drawAlert(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void checkAlerts();
+void redirectConfigure();
+#if defined(USE_ALERT_LED)
+void handleTestLed();
+#endif
+#if defined(USE_BUZZER)
+void handleTestBuzzer();
+#endif
 void sendTimezoneOptions(int selected);
 void updateAlertEffect();
 void startAlert(int type, int printerIndex);
@@ -87,10 +94,16 @@ const unsigned long ALERT_FLASH_PERIOD_MS = 400UL;     // length of one inverted
 boolean alertInverted = false;
 #if defined(USE_ALERT_LED)
 boolean alertLedOn = false;
+const unsigned long TEST_LED_MS = 3000UL;               // web "Test LED": blink for 3 seconds
+unsigned long testLedStartMs = 0;
+boolean testLedActive = false;
 #endif
 #if defined(USE_BUZZER)
 const unsigned long ALERT_BUZZ_ERROR_MS = 20000UL;     // error: beep (in step with the flashing) for the first 20 seconds
 boolean alertBuzzing = false;
+const unsigned long TEST_BEEP_MS = 300UL;               // web "Test Buzzer": 3 beeps, each 300 ms on / 300 ms off
+unsigned long testBuzzStartMs = 0;
+boolean testBuzzActive = false;
 #endif
 FrameCallback alertFrame[1];
 int alertType = ALERT_NONE;
@@ -466,6 +479,12 @@ void setup() {
     server.on("/updateweatherconfig", handleUpdateWeather);
     server.on("/configure", handleConfigure);
     server.on("/configureweather", handleWeatherConfigure);
+#if defined(USE_ALERT_LED)
+    server.on("/testled", handleTestLed);
+#endif
+#if defined(USE_BUZZER)
+    server.on("/testbuzzer", handleTestBuzzer);
+#endif
     server.onNotFound(redirectHome);
     serverUpdater.setup(&server, "/update", www_username, www_password);
     // Start the server
@@ -968,6 +987,19 @@ void handleConfigure() {
   form.replace("%STATIONPASSWORD%", String(www_password));
 
   server.sendContent(form);
+
+#if defined(USE_ALERT_LED) || defined(USE_BUZZER)
+  // Hardware test buttons (independent of each other and of the Save form above)
+  html = "<hr><h2>Hardware Test:</h2><p>";
+#if defined(USE_ALERT_LED)
+  html += "<a class='w3-button w3-grey w3-margin-right' href='/testled'>Test LED (blink 3 s)</a>";
+#endif
+#if defined(USE_BUZZER)
+  html += "<a class='w3-button w3-grey' href='/testbuzzer'>Test Buzzer (3 beeps)</a>";
+#endif
+  html += "</p>";
+  server.sendContent(html);
+#endif
   
   html = getFooter();
   server.sendContent(html);
@@ -975,6 +1007,38 @@ void handleConfigure() {
   server.client().stop();
   ledOnOff(false);
 }
+
+// Test buttons: start a non-blocking pattern (see updateAlertEffect) and go back to the config page
+void redirectConfigure() {
+  server.sendHeader("Location", String("/configure"), true);
+  server.sendHeader("Cache-Control", "no-cache, no-store");
+  server.sendHeader("Pragma", "no-cache");
+  server.sendHeader("Expires", "-1");
+  server.send(302, "text/plain", "");
+  server.client().stop();
+}
+
+#if defined(USE_ALERT_LED)
+void handleTestLed() {
+  if (!authentication()) {
+    return server.requestAuthentication();
+  }
+  testLedActive = true;
+  testLedStartMs = millis();
+  redirectConfigure();
+}
+#endif
+
+#if defined(USE_BUZZER)
+void handleTestBuzzer() {
+  if (!authentication()) {
+    return server.requestAuthentication();
+  }
+  testBuzzActive = true;
+  testBuzzStartMs = millis();
+  redirectConfigure();
+}
+#endif
 
 void displayMessage(String message) {
   ledOnOff(true);
@@ -1797,12 +1861,28 @@ void updateAlertEffect() {
 #endif
   }
 #if defined(USE_ALERT_LED)
+  if (testLedActive) {
+    unsigned long t = millis() - testLedStartMs;
+    if (t >= TEST_LED_MS) {
+      testLedActive = false;
+    } else if (((t / ALERT_FLASH_PERIOD_MS) % 2) == 0) {
+      wantLed = true;
+    }
+  }
   if (wantLed != alertLedOn) {
     alertLedOn = wantLed;
     digitalWrite(ALERT_LED_PIN, alertLedOn ? HIGH : LOW);
   }
 #endif
 #if defined(USE_BUZZER)
+  if (testBuzzActive) {
+    unsigned long t = millis() - testBuzzStartMs;
+    if (t >= TEST_BEEP_MS * 6) {
+      testBuzzActive = false;
+    } else if (((t / TEST_BEEP_MS) % 2) == 0) {
+      wantBuzzing = true;
+    }
+  }
   if (wantBuzzing != alertBuzzing) {
     alertBuzzing = wantBuzzing;
     if (alertBuzzing) {

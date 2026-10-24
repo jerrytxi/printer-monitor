@@ -114,7 +114,7 @@ const int BUZZER_PIN = D6;      // Piezo disc between this pin and GND (driven d
 const int BUZZER_FREQ_HZ = 2700; // Resonant frequency of the piezo disc, usually 2000-4000 Hz
 
 // Alarm LED Settings
-//#define USE_ALERT_LED         // Uncomment to compile the external red alarm LED -- blinks on print ERROR until dismissed
+#define USE_ALERT_LED         // Uncomment to compile the external red alarm LED -- blinks on print ERROR until dismissed
 const int ALERT_LED_PIN = D7;   // LED anode via a 220-330 ohm resistor, cathode to GND (active HIGH)
 
 // LED Settings
@@ -126,7 +126,7 @@ boolean HAS_PSU = false; // OctoPrint PSUControl only; Moonraker does not use th
 
 // OTA Updates
 boolean ENABLE_OTA = true;     // this will allow you to load firmware to the device over WiFi (see OTA for ESP8266)
-String OTA_Password = "";      // Set an OTA password here -- leave blank if you don't want to be prompted for password
+String OTA_Password = "printermonitor2026";      // Set an OTA password here -- leave blank if you don't want to be prompted for password
 
 //******************************
 // End Settings
