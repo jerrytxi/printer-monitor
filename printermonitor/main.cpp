@@ -84,6 +84,13 @@ const unsigned long ALERT_FLASH_COMPLETE_MS = 2400UL;  // complete: 3 quick flas
 const unsigned long ALERT_FLASH_ERROR_MS = 60000UL;    // error: flash for the first minute, then steady
 const unsigned long ALERT_FLASH_PERIOD_MS = 400UL;     // length of one inverted / normal phase
 boolean alertInverted = false;
+#if defined(USE_ALERT_LED)
+boolean alertLedOn = false;
+#endif
+#if defined(USE_BUZZER)
+const unsigned long ALERT_BUZZ_ERROR_MS = 20000UL;     // error: beep (in step with the flashing) for the first 20 seconds
+boolean alertBuzzing = false;
+#endif
 FrameCallback alertFrame[1];
 int alertType = ALERT_NONE;
 int alertPrinterIndex = 0;
@@ -349,6 +356,14 @@ void setup() {
   // Initialize digital pin for LED (little blue light on the Wemos D1 Mini)
   pinMode(externalLight, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+#if defined(USE_ALERT_LED)
+  pinMode(ALERT_LED_PIN, OUTPUT);
+  digitalWrite(ALERT_LED_PIN, LOW);
+#endif
+#if defined(USE_BUZZER)
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+#endif
 
   //Some Defaults before loading from Config.txt
   PrinterPort = printerClient.getPrinterPort();
@@ -1715,15 +1730,45 @@ void checkAlerts() {
 }
 
 // Flash the whole panel (hardware invert, one I2C command per change) while an alert is new
+// and, if compiled in, beep a piezo disc / blink a red LED in step with the flashing on print errors.
+// The LED keeps blinking until the alert is dismissed, the buzzer stops after ALERT_BUZZ_ERROR_MS.
 void updateAlertEffect() {
   boolean wantInverted = false;
+#if defined(USE_ALERT_LED)
+  boolean wantLed = false;
+#endif
+#if defined(USE_BUZZER)
+  boolean wantBuzzing = false;
+#endif
   if (alertType != ALERT_NONE) {
     unsigned long elapsed = millis() - alertStartMs;
     unsigned long flashMs = (alertType == ALERT_ERROR) ? ALERT_FLASH_ERROR_MS : ALERT_FLASH_COMPLETE_MS;
     if (elapsed < flashMs) {
       wantInverted = ((elapsed / ALERT_FLASH_PERIOD_MS) % 2) == 0;
     }
+#if defined(USE_ALERT_LED)
+    wantLed = alertType == ALERT_ERROR && ((elapsed / ALERT_FLASH_PERIOD_MS) % 2) == 0;
+#endif
+#if defined(USE_BUZZER)
+    wantBuzzing = wantInverted && alertType == ALERT_ERROR && elapsed < ALERT_BUZZ_ERROR_MS;
+#endif
   }
+#if defined(USE_ALERT_LED)
+  if (wantLed != alertLedOn) {
+    alertLedOn = wantLed;
+    digitalWrite(ALERT_LED_PIN, alertLedOn ? HIGH : LOW);
+  }
+#endif
+#if defined(USE_BUZZER)
+  if (wantBuzzing != alertBuzzing) {
+    alertBuzzing = wantBuzzing;
+    if (alertBuzzing) {
+      tone(BUZZER_PIN, BUZZER_FREQ_HZ);
+    } else {
+      noTone(BUZZER_PIN);
+    }
+  }
+#endif
   if (wantInverted != alertInverted) {
     alertInverted = wantInverted;
     if (alertInverted) {

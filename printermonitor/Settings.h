@@ -108,6 +108,15 @@ boolean INVERT_DISPLAY = false; // true = pins at top | false = pins at the bott
 // Button Settings
 const int BUTTON_PIN = D3; // Push button between D3 and GND (internal pull-up). Short press = next screen. D3 is GPIO0: do not hold it while powering up / resetting
 
+// Buzzer Settings
+//#define USE_BUZZER            // Uncomment to compile piezo buzzer support -- beeps on print ERROR only
+const int BUZZER_PIN = D6;      // Piezo disc between this pin and GND (driven directly with tone())
+const int BUZZER_FREQ_HZ = 2700; // Resonant frequency of the piezo disc, usually 2000-4000 Hz
+
+// Alarm LED Settings
+//#define USE_ALERT_LED         // Uncomment to compile the external red alarm LED -- blinks on print ERROR until dismissed
+const int ALERT_LED_PIN = D7;   // LED anode via a 220-330 ohm resistor, cathode to GND (active HIGH)
+
 // LED Settings
 const int externalLight = LED_BUILTIN; // LED will always flash on bootup or Wifi Errors
 boolean USE_FLASH = true; // true = System LED will Flash on Service Calls; false = disabled LED flashing
