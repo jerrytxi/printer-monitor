@@ -66,6 +66,7 @@ void drawWeather(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int
 void drawClockHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state);
 void drawAlert(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void checkAlerts();
+void updateAlertEffect();
 void startAlert(int type, int printerIndex);
 void endAlert();
 
@@ -79,6 +80,10 @@ boolean isClockOn = false;
 enum AlertType { ALERT_NONE, ALERT_COMPLETE, ALERT_ERROR };
 const unsigned long ALERT_COMPLETE_MS = 5UL * 60UL * 1000UL;   // show "print complete" for 5 minutes
 const unsigned long ALERT_ERROR_MS = 15UL * 60UL * 1000UL;     // show "print error" for 15 minutes
+const unsigned long ALERT_FLASH_COMPLETE_MS = 2400UL;  // complete: 3 quick flashes, then steady
+const unsigned long ALERT_FLASH_ERROR_MS = 60000UL;    // error: flash for the first minute, then steady
+const unsigned long ALERT_FLASH_PERIOD_MS = 400UL;     // length of one inverted / normal phase
+boolean alertInverted = false;
 FrameCallback alertFrame[1];
 int alertType = ALERT_NONE;
 int alertPrinterIndex = 0;
@@ -582,6 +587,7 @@ void loop() {
   }
 
   checkAlerts();  // Detect print complete / error and show the alert page
+  updateAlertEffect();
   checkDisplay(); // Check to see if the printer is on or offline and change display.
 
   ui.update();
@@ -1662,15 +1668,8 @@ void drawAlert(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16
     String time = zeroPad(numberOfHours(alertDuration)) + ":" + zeroPad(numberOfMinutes(alertDuration)) + ":" + zeroPad(numberOfSeconds(alertDuration));
     display->drawString(64 + x, 34 + y, time);
   } else if (alertType == ALERT_ERROR) {
-    // Blink the title bar (inverted every 500 ms) so the error is noticeable
-    boolean inverted = (millis() / 500) % 2;
     display->setFont(ArialMT_Plain_16);
-    if (inverted) {
-      display->fillRect(0 + x, 0 + y, 128, 17);
-      display->setColor(BLACK);
-    }
     display->drawString(64 + x, 0 + y, "PRINT ERROR");
-    display->setColor(WHITE);
     display->setFont(ArialMT_Plain_10);
     if (alertMessage != "") {
       display->setTextAlignment(TEXT_ALIGN_LEFT);
@@ -1715,6 +1714,26 @@ void checkAlerts() {
   }
 }
 
+// Flash the whole panel (hardware invert, one I2C command per change) while an alert is new
+void updateAlertEffect() {
+  boolean wantInverted = false;
+  if (alertType != ALERT_NONE) {
+    unsigned long elapsed = millis() - alertStartMs;
+    unsigned long flashMs = (alertType == ALERT_ERROR) ? ALERT_FLASH_ERROR_MS : ALERT_FLASH_COMPLETE_MS;
+    if (elapsed < flashMs) {
+      wantInverted = ((elapsed / ALERT_FLASH_PERIOD_MS) % 2) == 0;
+    }
+  }
+  if (wantInverted != alertInverted) {
+    alertInverted = wantInverted;
+    if (alertInverted) {
+      display.invertDisplay();
+    } else {
+      display.normalDisplay();
+    }
+  }
+}
+
 void startAlert(int type, int printerIndex) {
   alertType = type;
   alertPrinterIndex = printerIndex;
@@ -1744,6 +1763,7 @@ void startAlert(int type, int printerIndex) {
 
 void endAlert() {
   alertType = ALERT_NONE;
+  updateAlertEffect(); // restores the normal (non-inverted) panel
   ui.setFrames(frames, numberOfFrames);
   ui.setOverlays(overlays, numberOfOverlays);
   ui.enableAutoTransition();
